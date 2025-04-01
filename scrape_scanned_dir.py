@@ -51,7 +51,7 @@ def inpaint_to_height(img):
 
 class SingleTuberImgPair():
     def __init__(self, res):
-        self.res = res
+        self.res = res.cpu()
         self.rgb_path = Path(res.path)
         # add the depth path, based on the rgb path
         parts = list(self.rgb_path.parts)
@@ -97,7 +97,7 @@ class SingleTuberImgPair():
                                          nonzero_heights))
         base_3d_coords = np.column_stack((nonzero_inds,
                                          [0] * nonzero_inds.shape[0]))
-        points_3d = np.row_stack((top_3d_coords, base_3d_coords))
+        points_3d = np.vstack((top_3d_coords, base_3d_coords))
         # now can fit a convex hull and pull volume from that
         tuber_hull_3d = ConvexHull(points_3d)
         hull_volume_cm3 =  tuber_hull_3d.volume * (mm_per_pixel ** 2) / 1000
@@ -118,18 +118,22 @@ class TuberImgSet():
         print('Calculating metrics...')
         all_cls_props = []
         all_sizes = []
+        all_imnames = []
         for res in self.yolo_res:
             img_pair = SingleTuberImgPair(res)
+            if not img_pair.res.masks:
+                continue
             img_pair.calc_cls_proportions()
             img_pair.mask_fg()
             img_pair.calc_tuber_size()
             all_cls_props.append(img_pair.cls_proportions)
             all_sizes.append(img_pair.tuber_metrics)
+            all_imnames.append(img_pair.rgb_path.name)
         props = pd.DataFrame(all_cls_props)
         sizes = pd.DataFrame(all_sizes)
         df = props.join(sizes)
         df.insert(0,'dir',self.base_img_path)
-        df.insert(1,'img', [x.name for x in self.rgb_img_paths])
+        df.insert(1,'img',all_imnames)
         self.df = df
     def append_notes(self):
         col_headers = ["Type", "Knobs", "Tuber bend", "Sprouting", "Growth cracks", "Eye depth", "Eye number", "Russeting", "Aligator hide", "Skin defect", "Greening"]
@@ -137,7 +141,7 @@ class TuberImgSet():
             self.df[header] = ""  # Initialize columns with empty strings
         notes_path = self.base_img_path / 'notes.txt'
         if not notes_path.exists():
-            raise Warning(f"Notes file {notes_path} does not exist.")
+            print(f"Notes file {notes_path} does not exist, skipping notes for this dir.")
         else:
             with open(notes_path, 'r') as f:
                 notes = f.readlines()
@@ -167,11 +171,9 @@ def main():
         img_set.calc_all_metrics()
         img_set.append_notes()
         all_dfs.append(img_set.df)
-    all_dfs = pd.concat(all_dfs, ignore_index=True)
-    all_dfs.to_csv(args.output, index=False)
+        out_df = pd.concat(all_dfs, ignore_index=True)
+        out_df.to_csv(args.output, index=False)
     print(f"Results saved to {args.output}")
-    # print the first 5 rows of the dataframe
-    print(all_dfs.head())
 
 if __name__ == "__main__":
     main()
