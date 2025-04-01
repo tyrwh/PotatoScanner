@@ -1,19 +1,45 @@
-import marimo
-
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks
 import skimage
-import re
 import pandas as pd
 import numpy as np
-import cv2
 from skimage.restoration import inpaint
 from skimage.filters import threshold_mean
 from scipy.spatial import ConvexHull
 from pathlib import Path
+from torch import cuda
 
-model = YOLO('./yolo11x_seg_best.pt')
-model.to(device='cuda')
+import argparse
+
+parser = argparse.ArgumentParser(description="Process tuber images and calculate metrics.")
+parser.add_argument('-i', '--input', required=True, help="Input directory containing images.")
+parser.add_argument('-o', '--output', required=True, help="Output CSV file name (must end with .csv).")
+parser.add_argument('-m', '--model', required=True, help="YOLO model file (.pt format).")
+
+args = parser.parse_args()
+
+if not args.output.endswith('.csv'):
+    raise ValueError("Output file name must end with .csv")
+if not args.model.endswith('.pt'):
+    raise ValueError("Model file must be in .pt format")
+
+def validate_target_dir(target_dir):
+    if not isinstance(target_dir, Path):
+        raise TypeError("target_dir must be a Path object")
+    if not target_dir.exists():
+        raise FileNotFoundError(f"The directory {target_dir} does not exist")
+    if not target_dir.is_dir():
+        raise NotADirectoryError(f"The path {target_dir} is not a directory")
+    tracked_images_dir = target_dir / "Tracked_Images"
+    if tracked_images_dir.exists() and tracked_images_dir.is_dir():
+        return [target_dir]
+    else:
+        subdirs_with_tracked_images = []
+        for subdir in target_dir.iterdir():
+            if subdir.is_dir() and (subdir / "Tracked_Images").exists() and (subdir / "Tracked_Images").is_dir():
+                subdirs_with_tracked_images.append(subdir)
+        return subdirs_with_tracked_images if subdirs_with_tracked_images else None
+
 
 def inpaint_to_height(img):
     mask = img == 0
@@ -105,9 +131,47 @@ class TuberImgSet():
         df.insert(0,'dir',self.base_img_path)
         df.insert(1,'img', [x.name for x in self.rgb_img_paths])
         self.df = df
+    def append_notes(self):
+        col_headers = ["Type", "Knobs", "Tuber bend", "Sprouting", "Growth cracks", "Eye depth", "Eye number", "Russeting", "Aligator hide", "Skin defect", "Greening"]
+        for header in col_headers:
+            self.df[header] = ""  # Initialize columns with empty strings
+        notes_path = self.base_img_path / 'notes.txt'
+        if not notes_path.exists():
+            raise Warning(f"Notes file {notes_path} does not exist.")
+        else:
+            with open(notes_path, 'r') as f:
+                notes = f.readlines()
+                for line in notes:
+                    for header in col_headers:
+                        if line.startswith(header):
+                            self.df[header] = line.split(":")[-1].strip()
+                            break
 
-foo = TuberImgSet('sample_images/O23-0765/')
-foo.run_yolo_seg(model)
-foo.calc_all_metrics()
+def main():
+    model = YOLO(args.model)
+    if cuda.is_available():
+        model.to(device='cuda')
+    target_subdirs = validate_target_dir(Path(args.input))
+    if target_subdirs is None:
+        raise ValueError("No subdirectories with tracked images found.")
+    all_dfs = []
+    for target_subdir in target_subdirs:
+        img_set = TuberImgSet(target_subdir)
+        if len(img_set.rgb_img_paths) != len(img_set.depth_img_paths):
+            print(f"Skipping {target_subdir} due to mismatched RGB and depth image counts.")
+            continue
+        if len(img_set.rgb_img_paths) == 0 or len(img_set.depth_img_paths) == 0:
+            print(f"Skipping {target_subdir} due to missing RGB or depth images.")
+            continue
+        img_set.run_yolo_seg(model)
+        img_set.calc_all_metrics()
+        img_set.append_notes()
+        all_dfs.append(img_set.df)
+    all_dfs = pd.concat(all_dfs, ignore_index=True)
+    all_dfs.to_csv(args.output, index=False)
+    print(f"Results saved to {args.output}")
+    # print the first 5 rows of the dataframe
+    print(all_dfs.head())
 
-
+if __name__ == "__main__":
+    main()
