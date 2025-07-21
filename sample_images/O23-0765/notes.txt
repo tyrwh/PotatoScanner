@@ -1,0 +1,25 @@
+SAMPLE NOTES
+
+Time Created: 2023-12-08 13:54:01
+Operator Name: kr
+Number of labels created: 0
+Number of images captured: 290
+Is Calibration Done: False
+Tracking Method: Object tracking
+Number of objects tracked: 45
+
+Other notes/observations: 
+
+Typey (1 - 5 perfect):4
+Knobs (1 none - 5 many):1
+Tuber bend (1 straight - 5 crescent):1
+Sprouting (1 none -5 many):1
+Growth cracks (1 none - 5 many):1
+Eye depth (1 shallow - 5 prominent):1
+Eye number (1 few - 5 many):2
+Russeting (1 none - 5 very):1
+Aligator hide (Y or N):n
+Skin defect (1 none - 5 hammered):1
+Greening (1 none - 5 very):2
+
+KEEP
