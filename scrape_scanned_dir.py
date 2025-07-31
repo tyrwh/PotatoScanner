@@ -78,7 +78,9 @@ def oriented_bounding_box(cnt):
     drawn_cnt = np.zeros((h+w,h+w), dtype = np.uint8)
     cv2.drawContours(drawn_cnt, [cnt - [int(center_x),int(center_y)] + [int((w+h)/2),int((h+w)/2)]], 0, 255, cv2.FILLED)
     rot_matrix = cv2.getRotationMatrix2D(((h+w)/2, (h+w)/2), angle, 1)
-    rotated = cv2.warpAffine(drawn_cnt, rot_matrix, (h+w,h+w))
+    rotated_aliased = cv2.warpAffine(drawn_cnt, rot_matrix, (h+w,h+w))
+    # rotating applies anti-aliasing - filter to avoid this
+    _, rotated = cv2.threshold(rotated_aliased, 127, 255, cv2.THRESH_BINARY)
     # redraw contours in order to find oriented bounding box (OBB)
     cnt_rotated, hierarchy = cv2.findContours(rotated, 0, 2)
     obb_x,obb_y,obb_w,obb_h = cv2.boundingRect(cnt_rotated[0])
